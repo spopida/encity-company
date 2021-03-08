@@ -1,19 +1,32 @@
 package uk.co.encity.company;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.Link;
 import org.springframework.http.*;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.util.Base64Utils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 import reactor.util.Logger;
 import reactor.util.Loggers;
 
+import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 
 /**
  * A web controller that provides access to Companies House services.
@@ -35,7 +48,7 @@ public class CompanyController {
      * @param apiURL the URL of the downstream server that implements the Companies House API
      */
     public CompanyController(@Value("${ch.api.key}") String apiKey, @Value("${ch.api.url}") String apiURL) {
-        logger.info("Constructing " + this.getClass().getName());
+        logger.debug("Constructing " + this.getClass().getName());
 
         this.apiKey = apiKey;
         this.apiURL = apiURL;
@@ -49,7 +62,7 @@ public class CompanyController {
                         "Basic" + " " + Base64Utils.encodeToString((this.apiKey + ":").getBytes(StandardCharsets.UTF_8)))
                 .build();
 
-        logger.info("Construction of " + this.getClass().getName() + " is complete");
+        logger.debug("Construction of " + this.getClass().getName() + " is complete");
         return;
     }
 
@@ -132,5 +145,99 @@ public class CompanyController {
         }
 
         return response;
+    }
+
+    // TODO:
+    // - write a private function that composes the right response structure
+    // - call exchangeToMono and pass the function in
+
+
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public ResponseEntity<String> handleHttpMessageNotWritableException(HttpMessageNotWritableException ex) {
+        logger.debug("Received " + ex.getMessage() + " from downstream server");
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("");
+    }
+
+    @CrossOrigin
+    @GetMapping("/companies/{companyNumber}")
+    public Mono<ResponseEntity<EntityModel<CompanyResponse>>> getCompanyDetails(@PathVariable String companyNumber,
+                                                                       UriComponentsBuilder uriBuilder) {
+        // Configure and initiate the WebClient so that when it executes it produces the right kind of Mono
+
+        Responder responder = new Responder(uriBuilder, companyNumber);
+
+        Mono<ResponseEntity<EntityModel<CompanyResponse>>> result = this.webClient
+            .get()
+            .uri("/company/" + companyNumber)
+            .exchangeToMono(responder::makeResponse);
+
+        return result;
+    }
+
+    static class Responder {
+        private String companyNo;
+        private UriComponentsBuilder uriBuilder;
+        private Logger logger = Loggers.getLogger(getClass());
+
+        Responder(UriComponentsBuilder uriBuilder, String n) {
+            this.companyNo = n;
+            this.uriBuilder = uriBuilder;
+        }
+
+        Mono<ResponseEntity<EntityModel<CompanyResponse>>> makeResponse(ClientResponse clientResponse) {
+            logger.debug("Start of makeResponse");
+
+            Mono<ResponseEntity<EntityModel<CompanyResponse>>> result;
+            result = clientResponse.bodyToMono(String.class).flatMap(body -> {
+                CompanyResponse response = null;
+
+                // Deserialize...
+
+                ObjectMapper mapper = new ObjectMapper();
+                SimpleModule module = new SimpleModule();
+                module.addDeserializer(CompanyResponse.class, new CompanyResponseDeserializer());
+                mapper.registerModule(module);
+
+                try {
+                    response = mapper.readValue(body, CompanyResponse.class);
+                    logger.debug("Company response de-serialised successfully");
+                } catch (IOException e) {
+                    logger.error("Error de-serialising company response: " + e.getMessage());
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
+                }
+
+                // Handle errors from CH API here...
+
+
+                // Add a self link here...
+                EntityModel<CompanyResponse> model;
+                try {
+                    model = EntityModel.of(response);
+                    try {
+                        Method m = CompanyController.class.getMethod("getCompanyDetails", String.class, UriComponentsBuilder.class);
+                        Link l = linkTo(m, this.companyNo).withSelfRel();
+
+                        model.add(l);
+                    } catch (NoSuchMethodException e) {
+                        logger.error("Failure generating HAL relations - please investigate.  Company: " + this.companyNo);
+                        return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
+                    }
+                } catch (Exception e) {
+                    logger.error("Unexpected error generating EntityModel - please investigate: " + this.companyNo);
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
+                }
+
+                // Include the correct location
+                UriComponents uriComponents = uriBuilder.path("/companies/" + this.companyNo).build();
+                HttpHeaders headers = new HttpHeaders();
+                headers.setLocation(uriComponents.toUri());
+
+                return Mono.just(ResponseEntity.status(HttpStatus.OK).headers(headers).body(model));
+            });
+
+            logger.debug("end of makeResponse");
+            return result;
+        }
     }
 }
