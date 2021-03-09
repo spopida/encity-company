@@ -20,6 +20,7 @@ public class CompanyResponse {
     protected class RegisteredOfficeAddress {
         protected String postalCode;
         protected String region;
+        protected String country;
         protected String addressLine1;
         protected String locality;
     }

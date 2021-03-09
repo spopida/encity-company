@@ -31,11 +31,22 @@ public class CompanyResponseDeserializer extends StdDeserializer<CompanyResponse
         response.setCompanyName(rootNode.get("company_name").asText());
 
         // Registered office address
-        JsonNode roaNode = rootNode.get("registered_office_address");
-        response.registeredOfficeAddress.postalCode = roaNode.get("postal_code").asText();
-        response.registeredOfficeAddress.region = roaNode.get("region").asText();
-        response.registeredOfficeAddress.addressLine1 = roaNode.get("address_line_1").asText();
-        response.registeredOfficeAddress.locality = roaNode.get("locality").asText();
+        if (rootNode.hasNonNull("registered_office_address")) {
+            JsonNode roaNode = rootNode.get("registered_office_address");
+
+            response.registeredOfficeAddress.postalCode = roaNode.hasNonNull("postal_code") ?
+                roaNode.get("postal_code").asText() : null;
+            response.registeredOfficeAddress.region = roaNode.hasNonNull("region") ?
+                roaNode.get("region").asText() : null;
+            response.registeredOfficeAddress.country = roaNode.hasNonNull("country") ?
+                roaNode.get("country").asText() : null;
+            response.registeredOfficeAddress.addressLine1 = roaNode.hasNonNull("address_line_1") ?
+                roaNode.get("address_line_1").asText() : null;
+            response.registeredOfficeAddress.locality = roaNode.hasNonNull("locality") ?
+                roaNode.get("locality").asText() : null;
+        } else {
+            response.registeredOfficeAddress = null;
+        }
 
         if (rootNode.hasNonNull("confirmation_statement")) {
             // Confirmation statement details
@@ -67,13 +78,10 @@ public class CompanyResponseDeserializer extends StdDeserializer<CompanyResponse
 
             response.accounts.lastAccounts.madeUpTo = (lastAcctsNode.hasNonNull("made_up_to")) ?
                 LocalDate.parse(lastAcctsNode.get("made_up_to").asText()) : null;
-
             response.accounts.lastAccounts.type = (lastAcctsNode.hasNonNull("type")) ?
                 lastAcctsNode.get("type").asText() : null;
-
             response.accounts.lastAccounts.periodStartOn = (lastAcctsNode.hasNonNull("period_start_on")) ?
                 LocalDate.parse(lastAcctsNode.get("period_start_on").asText()) : null;
-
             response.accounts.lastAccounts.periodEndOn = (lastAcctsNode.hasNonNull("period_end_on")) ?
                 LocalDate.parse(lastAcctsNode.get("period_end_on").asText()) : null;
         } else {

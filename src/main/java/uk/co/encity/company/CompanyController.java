@@ -70,6 +70,7 @@ public class CompanyController {
      * This method shows how I got a synchronous call working, but RestTemplate is deprecated.  This is here
      * purely for my reference for now, but it should not be called, and will be deleted in due course
      */
+    @Deprecated
     @GetMapping("/company/s/{companyNumber}")
     public String getCustomerByCompanyNumberSync(@PathVariable String companyNumber) {
         RestTemplate restTemplate = new RestTemplate();
@@ -123,6 +124,7 @@ public class CompanyController {
      * the JSON object retrieved from companies house
      */
     @CrossOrigin
+    @Deprecated
     @GetMapping("/company/{companyNumber}")
     public Mono<String> getCustomerByCompanyNumber(@PathVariable String companyNumber) {
 
@@ -134,22 +136,8 @@ public class CompanyController {
                 .retrieve()
                 .bodyToMono(String.class);
 
-        // Of course this should be removed, but for now I'm keeping it as it's useful for async testing.  I'll find a
-        // better way in due course (honest!)
-        try {
-            System.out.println("Sleeping");
-            TimeUnit.SECONDS.sleep(1);
-            System.out.println("Waking up");
-        } catch (InterruptedException e) {
-            System.out.println("Sleep failed!");
-        }
-
         return response;
     }
-
-    // TODO:
-    // - write a private function that composes the right response structure
-    // - call exchangeToMono and pass the function in
 
 
     @ExceptionHandler(HttpMessageNotWritableException.class)
@@ -159,6 +147,12 @@ public class CompanyController {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("");
     }
 
+    /**
+     * Get details of a given company
+     * @param companyNumber the Company Number assigned by Companies House
+     * @param uriBuilder a {@link UriComponentsBuilder} that is configured for this service
+     * @return a well-formed RESTful / HATEOAS style response containing company details, or an error status
+     */
     @CrossOrigin
     @GetMapping("/companies/{companyNumber}")
     public Mono<ResponseEntity<EntityModel<CompanyResponse>>> getCompanyDetails(@PathVariable String companyNumber,
@@ -175,6 +169,10 @@ public class CompanyController {
         return result;
     }
 
+    /**
+     * Creates a well-structured RESTful / HATEOAS response that is de-coupled from
+     * the Companies House response (although not massively).
+     */
     static class Responder {
         private String companyNo;
         private UriComponentsBuilder uriBuilder;
