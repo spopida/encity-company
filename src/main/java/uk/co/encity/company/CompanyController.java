@@ -2,8 +2,17 @@ package uk.co.encity.company;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.hateoas.EntityModel;
-import org.springframework.hateoas.Link;
+
+// Spring HATEOAS won't work with Webflux + Netty so abandoned for now
+// -------------------------------------------------------------------
+//import org.springframework.hateoas.EntityModel;
+//import org.springframework.hateoas.Link;
+//import static org.springframework.hateoas.server.reactive.WebFluxLinkBuilder.WebFluxBuilder;
+//import static org.springframework.hateoas.server.reactive.WebFluxLinkBuilder.linkTo;
+//import static org.springframework.hateoas.server.reactive.WebFluxLinkBuilder.WebFluxLink;
+//import static org.springframework.hateoas.server.reactive.WebFluxLinkBuilder.methodOn;
+//import org.springframework.hateoas.Links;
+
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.util.Base64Utils;
@@ -20,17 +29,14 @@ import reactor.util.Logger;
 import reactor.util.Loggers;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
-
-import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 
 /**
  * A web controller that provides access to Companies House services.
  */
+@CrossOrigin
 @RestController
 public class CompanyController {
 
@@ -155,13 +161,13 @@ public class CompanyController {
      */
     @CrossOrigin
     @GetMapping("/companies/{companyNumber}")
-    public Mono<ResponseEntity<EntityModel<CompanyResponse>>> getCompanyDetails(@PathVariable String companyNumber,
+    public Mono<ResponseEntity<CompanyResponse>> getCompanyDetails(@PathVariable String companyNumber,
                                                                        UriComponentsBuilder uriBuilder) {
         // Configure and initiate the WebClient so that when it executes it produces the right kind of Mono
 
         Responder responder = new Responder(uriBuilder, companyNumber);
 
-        Mono<ResponseEntity<EntityModel<CompanyResponse>>> result = this.webClient
+        Mono<ResponseEntity<CompanyResponse>> result = this.webClient
             .get()
             .uri("/company/" + companyNumber)
             .exchangeToMono(responder::makeResponse);
@@ -172,6 +178,9 @@ public class CompanyController {
     /**
      * Creates a well-structured RESTful / HATEOAS response that is de-coupled from
      * the Companies House response (although not massively).
+     *
+     * Note - HATEOAS has been abandoned for now because I can't get spring hateoas to
+     * work smoothly with webflux.  This will be re-visited when time allows
      */
     static class Responder {
         private String companyNo;
@@ -183,10 +192,10 @@ public class CompanyController {
             this.uriBuilder = uriBuilder;
         }
 
-        Mono<ResponseEntity<EntityModel<CompanyResponse>>> makeResponse(ClientResponse clientResponse) {
+        Mono<ResponseEntity<CompanyResponse>> makeResponse(ClientResponse clientResponse) {
             logger.debug("Start of makeResponse");
 
-            Mono<ResponseEntity<EntityModel<CompanyResponse>>> result;
+            Mono<ResponseEntity<CompanyResponse>> result;
             result = clientResponse.bodyToMono(String.class).flatMap(body -> {
                 CompanyResponse response = null;
 
@@ -205,17 +214,20 @@ public class CompanyController {
                     return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 }
 
+
                 // Handle errors from CH API here...
 
 
                 // Add a self link here...
+                /*
                 EntityModel<CompanyResponse> model;
                 try {
                     model = EntityModel.of(response);
                     try {
-                        Method m = CompanyController.class.getMethod("getCompanyDetails", String.class, UriComponentsBuilder.class);
-                        Link l = linkTo(m, this.companyNo).withSelfRel();
+                        CompanyController c = methodOn(CompanyController.class);
 
+                        WebFluxLink l = linkTo(c.getCompanyDetails(companyNo, uriBuilder)).withSelfRel();
+                        //Link l = linkTo(m, this.companyNo).withSelfRel();
                         model.add(l);
                     } catch (NoSuchMethodException e) {
                         logger.error("Failure generating HAL relations - please investigate.  Company: " + this.companyNo);
@@ -225,13 +237,14 @@ public class CompanyController {
                     logger.error("Unexpected error generating EntityModel - please investigate: " + this.companyNo);
                     return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 }
+                */
 
                 // Include the correct location
                 UriComponents uriComponents = uriBuilder.path("/companies/" + this.companyNo).build();
                 HttpHeaders headers = new HttpHeaders();
                 headers.setLocation(uriComponents.toUri());
 
-                return Mono.just(ResponseEntity.status(HttpStatus.OK).headers(headers).body(model));
+                return Mono.just(ResponseEntity.status(HttpStatus.OK).headers(headers).body(response));
             });
 
             logger.debug("end of makeResponse");
