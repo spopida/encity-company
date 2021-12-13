@@ -50,10 +50,10 @@ public class SecurityConfig  {
 
         http
                 .authorizeExchange()
-                .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .pathMatchers(HttpMethod.GET,"/company/**").permitAll()
+                //.pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                //.pathMatchers(HttpMethod.GET,"/company/**").permitAll()
                 .pathMatchers(HttpMethod.GET, "/companies/**").hasAuthority("SCOPE_read:company_profile")
-                .anyExchange().authenticated()
+                //.anyExchange().authenticated()
                 .and()
                 .oauth2ResourceServer()
                 .jwt();

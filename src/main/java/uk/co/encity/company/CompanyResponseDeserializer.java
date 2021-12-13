@@ -54,15 +54,20 @@ public class CompanyResponseDeserializer extends StdDeserializer<CompanyResponse
             response.confirmationStatement.overdue = csNode.get("overdue").asBoolean();
             response.confirmationStatement.nextDue = LocalDate.parse(csNode.get("next_due").asText());
             response.confirmationStatement.nextMadeUpTo = LocalDate.parse(csNode.get("next_made_up_to").asText());
-            response.confirmationStatement.lastMadeUpTo = LocalDate.parse(csNode.get("last_made_up_to").asText());
+            response.confirmationStatement.lastMadeUpTo = csNode.hasNonNull("last_made_up_to") ? LocalDate.parse(csNode.get("last_made_up_to").asText()) : null;
         } else {
             response.confirmationStatement = null;
         }
 
         // Accounts details
         JsonNode acctsNode = rootNode.get("accounts");
-        response.accounts.accountingReferenceDate.day = acctsNode.get("accounting_reference_date").get("day").asText();
-        response.accounts.accountingReferenceDate.month = acctsNode.get("accounting_reference_date").get("month").asText();
+
+        if (acctsNode.hasNonNull("accounting_reference_date")) {
+            response.accounts.accountingReferenceDate.day = acctsNode.get("accounting_reference_date").get("day").asText();
+            response.accounts.accountingReferenceDate.month = acctsNode.get("accounting_reference_date").get("month").asText();
+        } else {
+            response.accounts.accountingReferenceDate = null;
+        }
 
         if (acctsNode.hasNonNull("next_accounts")) {
             response.accounts.nextAccounts.periodStartOn = LocalDate.parse(acctsNode.get("next_accounts").get("period_start_on").asText());
